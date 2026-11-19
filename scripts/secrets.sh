@@ -16,13 +16,15 @@ OPTIONAL=" ANTHROPIC_API_KEY LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY LANGFUSE_HO
 
 kc() { kubectl --context "$CONTEXT" "$@"; }
 
-# Value of KEY in .env (CR and surrounding quotes stripped); empty if absent.
+# Value of KEY in .env (CR, trailing whitespace and surrounding quotes stripped); empty if absent.
+# A pasted key easily carries a trailing space, and the service then rejects it.
 env_value() {
   local line value
   [[ -f "$ENV_FILE" ]] || return 0
   line=$(grep -E "^$1=" "$ENV_FILE" | tail -n 1 || true)
   value=${line#*=}
   value=${value%$'\r'}
+  value=${value%"${value##*[![:space:]]}"}
   if [[ $value =~ ^\"(.*)\"$ || $value =~ ^\'(.*)\'$ ]]; then
     value=${BASH_REMATCH[1]}
   fi
