@@ -1,0 +1,109 @@
+{{- $ctx := dict "root" . "name" "litellm" }}
+{{- $config := include "infra.litellmConfig" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+data:
+  config.yaml: |
+    {{- $config | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: litellm
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: litellm
+  template:
+    metadata:
+      labels:
+        {{- include "infra.labels" $ctx | nindent 8 }}
+      annotations:
+        checksum/config: {{ $config | sha256sum }}
+    spec:
+      securityContext:
+        {{- include "infra.podSecurityContext" (dict "uid" 1000) | nindent 8 }}
+      # LiteLLM exits if its database is unreachable at startup; wait instead of crash-looping.
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ .Values.postgres.image }}
+          command: [sh, -c, "until pg_isready -q -h postgres -p 5432 -U postgres; do sleep 2; done"]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 32Mi}
+          securityContext:
+            {{- include "infra.containerSecurityContext" (dict "readOnly" true) | nindent 12 }}
+      containers:
+        - name: litellm
+          image: {{ .Values.litellm.image }}
+          args: [--config, /app/config.yaml, --port, "4000"]
+          env:
+            # May be empty (CI, K22): the proxy starts, only real model calls fail.
+            {{- include "infra.secretEnv" (dict "root" . "name" "ANTHROPIC_API_KEY") | nindent 12 }}
+            {{- include "infra.secretEnv" (dict "root" . "name" "LITELLM_MASTER_KEY") | nindent 12 }}
+            {{- include "infra.secretEnv" (dict "root" . "name" "DATABASE_URL" "key" "LITELLM_DATABASE_URL") | nindent 12 }}
+            {{- if .Values.litellm.langfuse }}
+            {{- range list "LANGFUSE_PUBLIC_KEY" "LANGFUSE_SECRET_KEY" "LANGFUSE_HOST" }}
+            {{- include "infra.secretEnv" (dict "root" $ "name" .) | nindent 12 }}
+            {{- end }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 4000
+          # The first start applies ~230 Prisma migrations to the litellm database.
+          startupProbe:
+            httpGet:
+              path: /health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.litellm.resources | nindent 12 }}
+          securityContext:
+            {{- include "infra.containerSecurityContext" (dict "readOnly" true) | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: litellm-config
+        - name: tmp
+          emptyDir: {}

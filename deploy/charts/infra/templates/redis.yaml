@@ -1,0 +1,60 @@
+{{- $ctx := dict "root" . "name" "redis" }}
+# Pub/sub, rate limit and cache only (K10): no password, no persistence.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  template:
+    metadata:
+      labels:
+        {{- include "infra.labels" $ctx | nindent 8 }}
+    spec:
+      securityContext:
+        {{- include "infra.podSecurityContext" (dict "uid" 999) | nindent 8 }}
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image }}
+          args: [redis-server, --save, "", --appendonly, "no"]
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: [redis-cli, ping]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: [redis-cli, ping]
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          securityContext:
+            {{- include "infra.containerSecurityContext" (dict "readOnly" true) | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}

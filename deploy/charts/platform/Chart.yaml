@@ -1,0 +1,5 @@
+apiVersion: v2
+name: platform
+description: API, Celery worker and bootstrap Job of the data agent platform (needs the infra chart)
+type: application
+version: 0.1.0

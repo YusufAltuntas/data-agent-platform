@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-config
+  labels:
+    {{- include "platform.labels" (dict "root" . "name" "platform") | nindent 4 }}
+data:
+  {{- include "platform.config" . | nindent 2 }}

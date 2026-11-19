@@ -1,0 +1,66 @@
+# Values for the grafana-community/grafana chart 14.5.0 (Grafana 13.3.1), installed by `make up`
+# (K15). The grafana/helm-charts copy of this chart is deprecated in favour of this one.
+# Reached at grafana.localhost through Traefik (K16); `make up` sets the root URL with the
+# public port. The admin password comes from the dap-secrets Secret (scripts/secrets.sh).
+env:
+  GF_SECURITY_ADMIN_USER: admin  # not a secret; the Secret holds only the password
+admin:
+  existingSecret: dap-secrets
+  passwordKey: GRAFANA_ADMIN_PASSWORD
+
+ingress:
+  enabled: true
+  hosts:
+    - grafana.localhost
+
+grafana.ini:
+  analytics:
+    check_for_updates: false
+    check_for_plugin_updates: false
+    reporting_enabled: false
+  news:
+    news_feed_enabled: false
+  # No alert rules are defined (design §9 asks for a dashboard only); this saves memory.
+  unified_alerting:
+    enabled: false
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus  # the dashboard refers to it by this uid
+        type: prometheus
+        access: proxy
+        url: http://prometheus-server
+        isDefault: true
+        editable: false
+
+# The one dashboard (design §9), from the ConfigMap the platform chart creates.
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: dap
+        orgId: 1
+        type: file
+        disableDeletion: true
+        allowUiUpdates: false
+        options:
+          path: /var/lib/grafana/dashboards/dap
+dashboardsConfigMaps:
+  dap: dap-dashboard
+
+testFramework:
+  enabled: false
+
+# Grafana 13 was OOM-killed at startup with a 256Mi limit (its database migrations). The limit
+# leaves room for that peak; a low GOMEMLIMIT (0.4 x limit) keeps the steady state small.
+goMemLimit:
+  factor: 0.4
+resources:
+  requests:
+    cpu: 50m
+    memory: 192Mi
+  limits:
+    memory: 512Mi

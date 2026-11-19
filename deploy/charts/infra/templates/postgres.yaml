@@ -1,0 +1,110 @@
+{{- $ctx := dict "root" . "name" "postgres" }}
+# Runs once, on an empty data directory (the image's initdb hook). POSTGRES_DB creates `dap`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+data:
+  01-databases.sql: |
+    CREATE DATABASE datasets;
+    CREATE DATABASE litellm;
+    -- The dataset roles (ds_sales_ro, ds_hr_ro) must not reach these databases; only the
+    -- superuser that owns them connects. `datasets` revokes PUBLIC itself (bootstrap).
+    REVOKE CONNECT ON DATABASE dap FROM PUBLIC;
+    REVOKE CONNECT ON DATABASE litellm FROM PUBLIC;
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        {{- include "infra.labels" $ctx | nindent 8 }}
+    spec:
+      securityContext:
+        {{- include "infra.podSecurityContext" (dict "uid" 70) | nindent 8 }}
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_DB
+              value: dap
+            {{- include "infra.secretEnv" (dict "root" . "name" "POSTGRES_PASSWORD") | nindent 12 }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          # TCP on 127.0.0.1: the temporary server during initdb listens on the socket only.
+          startupProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, postgres, -d, dap]
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, postgres, -d, dap]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: [pg_isready, -h, 127.0.0.1, -U, postgres, -d, dap]
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          securityContext:
+            {{- include "infra.containerSecurityContext" (dict "readOnly" true) | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: init
+          configMap:
+            name: postgres-init
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}

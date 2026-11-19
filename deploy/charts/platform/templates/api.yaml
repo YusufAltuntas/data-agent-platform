@@ -1,0 +1,87 @@
+{{- $ctx := dict "root" . "name" "api" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels:
+    {{- include "platform.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+# K16: app.localhost/api/... goes to the API. /api/metrics is for in-cluster scraping only, so
+# the route excludes it and Traefik answers 404. A Traefik IngressRoute, because a plain Ingress
+# cannot exclude a path.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: api
+  labels:
+    {{- include "platform.labels" $ctx | nindent 4 }}
+spec:
+  entryPoints: [web]
+  routes:
+    - kind: Rule
+      match: Host(`app.localhost`) && PathPrefix(`/api/`) && !PathPrefix(`/api/metrics`)
+      services:
+        - name: api
+          port: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    {{- include "platform.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" $ctx | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "platform.config" . | sha256sum }}
+        # Scraped by Prometheus inside the cluster (design §9); the IngressRoute excludes the path.
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /api/metrics
+        prometheus.io/port: "8000"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "platform.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: api
+          image: {{ include "platform.image" . }}
+          imagePullPolicy: IfNotPresent
+          # The image's default command: uvicorn on port 8000.
+          envFrom:
+            - configMapRef:
+                name: platform-config
+          env:
+            {{- include "platform.secretEnv" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /api/readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          securityContext:
+            {{- include "platform.containerSecurityContext" . | nindent 12 }}

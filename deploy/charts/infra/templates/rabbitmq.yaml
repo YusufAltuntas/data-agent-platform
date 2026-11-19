@@ -1,0 +1,75 @@
+{{- $ctx := dict "root" . "name" "rabbitmq" }}
+# Celery broker (K10). Queues live in an emptyDir: they survive container restarts, not pod deletion.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: amqp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+  template:
+    metadata:
+      labels:
+        {{- include "infra.labels" $ctx | nindent 8 }}
+    spec:
+      securityContext:
+        {{- include "infra.podSecurityContext" (dict "uid" 999) | nindent 8 }}
+      containers:
+        - name: rabbitmq
+          image: {{ .Values.rabbitmq.image }}
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              value: {{ .Values.rabbitmq.user }}
+            {{- include "infra.secretEnv" (dict "root" . "name" "RABBITMQ_DEFAULT_PASS" "key" "RABBITMQ_PASSWORD") | nindent 12 }}
+          ports:
+            - name: amqp
+              containerPort: 5672
+          # The AMQP listener opens only after the node has booted. A TCP check avoids starting
+          # an Erlang VM for rabbitmq-diagnostics on every probe.
+          startupProbe:
+            tcpSocket:
+              port: amqp
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            tcpSocket:
+              port: amqp
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: amqp
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.rabbitmq.resources | nindent 12 }}
+          securityContext:
+            {{- include "infra.containerSecurityContext" (dict "readOnly" true) | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

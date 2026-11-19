@@ -1,0 +1,55 @@
+# Host port Traefik is published on; every external address derives from it (K16).
+publicPort: 80
+
+# Created by scripts/secrets.sh from .env; no secret value lives in this chart.
+secretName: dap-secrets
+
+# Built by `make up` and loaded into kind (no registry). `make up` passes a tag derived from the
+# image id, so a rebuilt image rolls the pods and an unchanged one leaves them alone.
+image:
+  repository: dap-backend
+  tag: dev
+
+# Only for the bootstrap Job's wait-for-postgres init container (pg_isready); same as infra's.
+waitImage: postgres:17-alpine@sha256:cdef2be34fbbd163d0d633177c02d228c6c47937b95fdffe1eefb91914dfd47f
+
+llm:
+  # K22: the fake model unless `make up REAL_LLM=1` sets openai_compatible (worker → LiteLLM).
+  provider: fake
+  model: default  # LiteLLM alias (K17)
+  fakeStepDelayS: 0
+
+litellm:
+  url: http://litellm:4000
+  # max_budget of each LiteLLM team the bootstrap Job creates (K4). Applies to new teams only.
+  teamMaxBudgetUsd: 1
+
+api:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 256Mi}
+
+worker:
+  # Prefork pool (K10); each child process holds a copy of the app, so keep it small.
+  concurrency: 2
+  metricsPort: 9200  # Prometheus endpoint of the worker's parent process (WORKER_METRICS_PORT)
+  resources:
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 512Mi}
+
+bootstrap:
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+
+# Static SPA (frontend/Dockerfile): unprivileged nginx, config.js written at start (K16).
+frontend:
+  # Built and loaded by `make up` with a content-derived tag, like the backend image.
+  image:
+    repository: dap-frontend
+    tag: dev
+  # Langfuse UI base URL for the run page's trace link; empty: no link.
+  langfuseBaseUrl: ""
+  resources:
+    requests: {cpu: 10m, memory: 16Mi}
+    limits: {memory: 32Mi}

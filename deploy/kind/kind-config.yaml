@@ -1,0 +1,17 @@
+# kind cluster for the platform (K14). `make up` replaces the hostPort with PUBLIC_PORT (default 80).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: dap
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      # Docker Desktop on this machine still runs cgroup v1; the kubelet refuses it by default.
+      - |
+        kind: KubeletConfiguration
+        failCgroupV1: false
+    extraPortMappings:
+      # Traefik's NodePort (see deploy/values/traefik.yaml).
+      - containerPort: 30080
+        hostPort: 80
+        listenAddress: 127.0.0.1
+        protocol: TCP

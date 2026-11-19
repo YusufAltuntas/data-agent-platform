@@ -1,0 +1,39 @@
+# Sırlar
+.env
+.env.*
+!.env.example
+deploy/secrets/
+
+# Kişisel Claude Code kuralları ve skill'leri
+CLAUDE.md
+.claude/
+
+# subagent-driven-development ledger'ı (kurtarma haritası, git dışı)
+.superpowers/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Üretilen çıktılar (eval koşuları, raporlar)
+runs/
+
+# Helm
+deploy/charts/*/charts/
+deploy/charts/*/Chart.lock
+
+# Sistem
+.DS_Store

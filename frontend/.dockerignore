@@ -1,0 +1,11 @@
+# Build context is frontend/: only what the image build reads.
+*
+!package.json
+!package-lock.json
+!index.html
+!tsconfig.json
+!vite.config.ts
+!public/
+!src/
+!nginx.conf
+!entrypoint.sh

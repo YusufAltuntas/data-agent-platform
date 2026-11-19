@@ -1,0 +1,43 @@
+# Host port Traefik is published on; every external address derives from it (K16).
+publicPort: 80
+
+# Created by scripts/secrets.sh from .env; no secret value lives in this chart.
+secretName: dap-secrets
+
+# Official images pinned by digest (K15). The Keycloak and LiteLLM memory numbers follow the M5
+# measurements recorded in the plan's decision log; the others are estimates.
+postgres:
+  image: postgres:17-alpine@sha256:cdef2be34fbbd163d0d633177c02d228c6c47937b95fdffe1eefb91914dfd47f
+  storage: 1Gi
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 384Mi}
+
+redis:
+  image: redis:8@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
+  resources:
+    requests: {cpu: 50m, memory: 32Mi}
+    limits: {memory: 128Mi}
+
+rabbitmq:
+  image: rabbitmq:4@sha256:183272aa2ff82718cabeef343de8d9a900931ea65fda4e563fed2a6d9efde578
+  user: dap
+  resources:
+    requests: {cpu: 100m, memory: 192Mi}
+    limits: {memory: 384Mi}
+
+keycloak:
+  image: quay.io/keycloak/keycloak:26.8.2@sha256:c68e286cacd87b942ac1939a0a1481461109d6acd3a57dc496969a319a76bbf0
+  # Realm file content; `make up` passes --set-file keycloak.realm=deploy/keycloak/realm-export.json.
+  realm: ""
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {memory: 1Gi}
+
+litellm:
+  image: ghcr.io/berriai/litellm-database:v1.110.0@sha256:f52042e5144a4bb452c8d5232aa894117e1500164e3c6d4dfa088d79eefaa632
+  # Langfuse callback; `make up` sets it only when the Langfuse keys in .env are non-empty (K5).
+  langfuse: false
+  resources:
+    requests: {cpu: 100m, memory: 768Mi}
+    limits: {memory: 1Gi}

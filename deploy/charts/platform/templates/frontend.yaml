@@ -1,0 +1,99 @@
+{{- $ctx := dict "root" . "name" "frontend" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  labels:
+    {{- include "platform.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: frontend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# K16: everything on app.localhost outside /api goes to the SPA. The rule excludes /api itself,
+# so /api/... can never reach the SPA fallback, whatever the priorities (/api/metrics stays
+# Traefik's 404).
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: frontend
+  labels:
+    {{- include "platform.labels" $ctx | nindent 4 }}
+spec:
+  entryPoints: [web]
+  routes:
+    - kind: Rule
+      match: Host(`app.localhost`) && !PathPrefix(`/api`)
+      services:
+        - name: frontend
+          port: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels:
+    {{- include "platform.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" $ctx | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      # uid 101 is the `nginx` user of the nginx-unprivileged base image (frontend/Dockerfile).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontend
+          image: {{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}
+          imagePullPolicy: IfNotPresent
+          # Read by frontend/entrypoint.sh, which writes /config.js at start (K16).
+          env:
+            - name: FRONTEND_OIDC_ISSUER
+              value: {{ include "platform.externalUrl" (dict "root" . "host" "auth") }}/realms/dap
+            - name: FRONTEND_OIDC_CLIENT_ID
+              value: dap-web
+            - name: FRONTEND_API_BASE_URL
+              value: /api
+            - name: FRONTEND_LANGFUSE_BASE_URL
+              value: {{ .Values.frontend.langfuseBaseUrl | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          securityContext:
+            {{- include "platform.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: runtime
+              mountPath: /usr/share/nginx/runtime
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: runtime
+          emptyDir: {}

@@ -1,0 +1,106 @@
+{
+  "realm": "dap",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "roles": {
+    "realm": [
+      { "name": "platform-admin", "description": "Platform administrator (K7)" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "dap-web",
+      "name": "Data agent platform web app",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["${DAP_APP_URL}/callback"],
+      "webOrigins": ["${DAP_APP_URL}"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${DAP_APP_URL}/"
+      },
+      "protocolMappers": [
+        {
+          "name": "aud-dap-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "dap-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "dap-smoke",
+      "name": "Smoke test (direct grant, local only)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "aud-dap-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "dap-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "username": "alice",
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Example",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "${DAP_ALICE_PASSWORD}", "temporary": false }]
+    },
+    {
+      "id": "22222222-2222-2222-2222-222222222222",
+      "username": "bob",
+      "email": "bob@example.com",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Example",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "${DAP_BOB_PASSWORD}", "temporary": false }]
+    },
+    {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "username": "carol",
+      "email": "carol@example.com",
+      "emailVerified": true,
+      "firstName": "Carol",
+      "lastName": "Example",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "${DAP_CAROL_PASSWORD}", "temporary": false }]
+    },
+    {
+      "id": "44444444-4444-4444-4444-444444444444",
+      "username": "admin",
+      "email": "admin@example.com",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Example",
+      "enabled": true,
+      "realmRoles": ["platform-admin"],
+      "credentials": [{ "type": "password", "value": "${DAP_ADMIN_PASSWORD}", "temporary": false }]
+    }
+  ]
+}

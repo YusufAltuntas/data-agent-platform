@@ -1,0 +1,11 @@
+# The Grafana dashboard (design §9). Grafana, installed after this chart by `make up`, mounts this
+# ConfigMap (deploy/values/grafana.yaml, dashboardsConfigMaps) and provisions it from the file.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dap-dashboard
+  labels:
+    {{- include "platform.labels" (dict "root" . "name" "dashboard") | nindent 4 }}
+data:
+  dap.json: |
+    {{- .Files.Get "dashboards/dap.json" | nindent 4 }}

@@ -1,0 +1,93 @@
+{
+  "uid": "dap",
+  "title": "data-agent-platform",
+  "tags": ["dap"],
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Run rate and status (runs/min)",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(dap_runs_finished_total[5m])) * 60",
+          "legendFormat": "{{status}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(dap_runs_created_total[5m])) * 60",
+          "legendFormat": "created"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "p95 run duration",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(dap_run_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "bargauge",
+      "title": "LLM cost by team (selected range)",
+      "gridPos": {"x": 0, "y": 8, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4}, "overrides": []},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (team) (increase(dap_llm_cost_usd_total[$__range]))",
+          "legendFormat": "{{team}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Tool error rate",
+      "gridPos": {"x": 8, "y": 8, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool) (rate(dap_tool_calls_total{outcome=\"error\"}[5m])) / sum by (tool) (rate(dap_tool_calls_total[5m]))",
+          "legendFormat": "{{tool}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "API p95 request duration",
+      "description": "Excludes the SSE stream, whose requests stay open for the whole run, and the probes.",
+      "gridPos": {"x": 16, "y": 8, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{handler!~`/api/runs/\\{run_id\\}/events|/api/healthz|/api/readyz`}[5m])))",
+          "legendFormat": "p95"
+        }
+      ]
+    }
+  ]
+}

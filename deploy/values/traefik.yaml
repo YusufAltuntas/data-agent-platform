@@ -1,0 +1,29 @@
+# Values for the traefik/traefik chart 42.4.1 (Traefik v3.7.19), installed by `make up` (K14).
+# The chart keeps its default securityContext (non-root, read-only root filesystem).
+image:
+  digest: sha256:aa942a00bce033c909bf1f7e861d93761be4b31a035f10d2410d33e38a8f41cf
+versionOverride: v3.7.19
+
+# kind has no load balancer: NodePort 30080 is mapped to the host's PUBLIC_PORT by the kind config.
+# In chart 42.x the service type lives under service.spec.type.
+service:
+  spec:
+    type: NodePort
+ports:
+  web:
+    nodePort: 30080
+  websecure:
+    expose:
+      default: false
+
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+
+# Measured in the M5 spike: 33 MiB working set, 39 MiB peak.
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 128Mi

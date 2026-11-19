@@ -1,0 +1,62 @@
+# Values for the prometheus-community/prometheus chart 29.47.2 (Prometheus v3.16.0), installed by
+# `make up` (K15). Only the server: it scrapes the pods in the dap namespace that carry the
+# prometheus.io/* annotations (api: /api/metrics, worker: :9200/metrics; design §9).
+alertmanager:
+  enabled: false
+kube-state-metrics:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+
+server:
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 1m
+  # A local demo: a day of data in an emptyDir is enough.
+  retention: 1d
+  retentionSize: 256MB
+  persistentVolume:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 384Mi
+
+configmapReload:
+  prometheus:
+    resources:
+      requests:
+        cpu: 5m
+        memory: 16Mi
+      limits:
+        memory: 32Mi
+
+# Only annotated pods, only in our namespace; every other default job is switched off.
+scrapeConfigs:
+  prometheus:
+    enabled: false
+  kubernetes-api-servers:
+    enabled: false
+  kubernetes-nodes:
+    enabled: false
+  kubernetes-nodes-cadvisor:
+    enabled: false
+  kubernetes-service-endpoints:
+    enabled: false
+  kubernetes-service-endpoints-slow:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+  kubernetes-services:
+    enabled: false
+  kubernetes-pods-slow:
+    enabled: false
+  kubernetes-pods:
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [dap]

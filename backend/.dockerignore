@@ -1,0 +1,7 @@
+# Build context is backend/: only pyproject.toml, uv.lock, alembic.ini and dap/ are needed.
+*
+!pyproject.toml
+!uv.lock
+!alembic.ini
+!dap/
+**/__pycache__

@@ -1,0 +1,134 @@
+{{- $ctx := dict "root" . "name" "keycloak" }}
+{{- $authUrl := include "infra.externalUrl" (dict "root" . "host" "auth") }}
+# Realm `dap`, imported on every fresh start (start-dev keeps its H2 database in an emptyDir).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+data:
+  dap.json: |
+    {{- required "keycloak.realm is required: --set-file keycloak.realm=deploy/keycloak/realm-export.json" .Values.keycloak.realm | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: auth.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  name: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  labels:
+    {{- include "infra.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        {{- include "infra.labels" $ctx | nindent 8 }}
+      annotations:
+        checksum/realm: {{ .Values.keycloak.realm | sha256sum }}
+    spec:
+      securityContext:
+        {{- include "infra.podSecurityContext" (dict "uid" 1000) | nindent 8 }}
+      containers:
+        - name: keycloak
+          image: {{ .Values.keycloak.image }}
+          args: [start-dev, --import-realm]
+          env:
+            # External address: tokens fetched from the browser and from pods carry the same `iss`.
+            - name: KC_HOSTNAME
+              value: {{ $authUrl | quote }}
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_METRICS_ENABLED
+              value: "true"
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              value: admin
+            {{- include "infra.secretEnv" (dict "root" . "name" "KC_BOOTSTRAP_ADMIN_PASSWORD" "key" "KEYCLOAK_ADMIN_PASSWORD") | nindent 12 }}
+            # Read by the realm file's ${...} placeholders.
+            - name: DAP_APP_URL
+              value: {{ include "infra.externalUrl" (dict "root" . "host" "app") | quote }}
+            {{- range list "DAP_ALICE_PASSWORD" "DAP_BOB_PASSWORD" "DAP_CAROL_PASSWORD" "DAP_ADMIN_PASSWORD" }}
+            {{- include "infra.secretEnv" (dict "root" $ "name" .) | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: management
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.keycloak.resources | nindent 12 }}
+          # start-dev rebuilds the Quarkus app under /opt/keycloak/lib at startup, so the root
+          # filesystem cannot be read-only.
+          securityContext:
+            {{- include "infra.containerSecurityContext" (dict "readOnly" false) | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /opt/keycloak/data
+            - name: realm
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: realm
+          configMap:
+            name: keycloak-realm

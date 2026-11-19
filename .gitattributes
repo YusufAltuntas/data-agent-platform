@@ -1,0 +1,6 @@
+# Satır sonları her platformda LF; Windows'ta CRLF'ye dönen bash script'i kırılır (design K21).
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

@@ -1,0 +1,87 @@
+{{- $ctx := dict "root" . "name" "worker" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    {{- include "platform.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" $ctx | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "platform.config" . | sha256sum }}
+        # The parent process serves what the pool children recorded (design §9).
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "{{ .Values.worker.metricsPort }}"
+    spec:
+      automountServiceAccountToken: false
+      # The default 30 s for the warm shutdown, plus the wait for a last metrics scrape
+      # (dap/worker/app.py).
+      terminationGracePeriodSeconds: 50
+      securityContext:
+        {{- include "platform.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "platform.image" . }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - celery
+            - -A
+            - dap.worker.app
+            - --quiet  # no text banner: stdout stays JSON lines (design §9)
+            - worker
+            - --pool=prefork
+            - --concurrency={{ .Values.worker.concurrency }}
+            - --loglevel=INFO
+          envFrom:
+            - configMapRef:
+                name: platform-config
+          env:
+            {{- include "platform.secretEnv" . | nindent 12 }}
+            - name: WORKER_METRICS_PORT
+              value: {{ .Values.worker.metricsPort | quote }}
+            # prometheus_client multiprocess mode: the prefork children write their samples here.
+            # It lives as long as the pod; a restarted container keeps adding to the same totals.
+            - name: PROMETHEUS_MULTIPROC_DIR
+              value: /var/lib/prometheus-multiproc
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.worker.metricsPort }}
+          # Liveness only (design §10): the worker takes no traffic, so it has no readiness probe.
+          # The ping goes through the broker to this node; `--timeout` is the reply wait inside it.
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                # Without the multiprocess directory: the probe is a separate process and would
+                # leave a metrics file behind on every run.
+                - >-
+                  env -u PROMETHEUS_MULTIPROC_DIR
+                  celery -A dap.worker.app inspect ping -d "celery@$HOSTNAME" --timeout 5
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext:
+            {{- include "platform.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: prometheus-multiproc
+              mountPath: /var/lib/prometheus-multiproc
+      volumes:
+        # Read-only root filesystem: the prefork pool keeps its shared memory in a temp directory
+        # (billiard; without it the worker exits with "No usable temporary directory found").
+        - name: tmp
+          emptyDir: {}
+        - name: prometheus-multiproc
+          emptyDir: {}
