@@ -6,6 +6,8 @@ This is a personal project with a local Kubernetes (kind) deployment. It is not 
 
 The design decisions, the data model, the API and the test plan are in [`docs/design.md`](docs/design.md) (written in Turkish). This README covers what the system does, how to run it and the reasoning in short.
 
+![A finished run in the web UI: the answer, the result table, the SQL behind it and the start of the timeline of the agent's steps](docs/images/run-detail.png)
+
 ## Architecture
 
 ```mermaid
@@ -48,6 +50,8 @@ flowchart LR
 5. The cost of each model call comes from the LiteLLM proxy, which also enforces the team's budget. The run ends `succeeded`, `failed` (for example `step_limit` or `timeout`), `cancelled` or `budget_exceeded`.
 
 The model sits behind a small `LLMProvider` interface with two adapters: an OpenAI-compatible one that talks to the LiteLLM proxy, and a scripted fake used by tests, CI and the default local setup, so nothing needs an API key unless the real model is switched on.
+
+![The run list of the sales team: question, who asked it, status and cost](docs/images/run-list.png)
 
 ## Quick start
 
@@ -123,6 +127,8 @@ The full list with the rejected alternatives is in [design §3](docs/design.md#3
 - **Tracing:** each run is one Langfuse trace with one span per tool call. The worker passes the trace and span ids to the LiteLLM proxy (`existing_trace_id`, `parent_observation_id`) so that the proxy's model calls are recorded in the same trace. On 2026-11-19 a run was read back from Langfuse Cloud through its API: one trace with the root span `run`, four model calls from the proxy and four tool spans under it, and a total cost equal to the run's. Tracing switches itself off when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are not set: the SDK is never started, the proxy gets no callback, and runs are unaffected.
 - **Metrics:** Prometheus scrapes the API (`/api/metrics`: request durations and runs created per team) and the worker (port 9200: run duration, final statuses, LLM tokens and cost, tool calls). The worker's prefork children record their metrics through `prometheus_client`'s multiprocess mode, and the parent process serves the sum. `/api/metrics` is reachable only from inside the cluster.
 - **Dashboard:** Grafana comes with one provisioned dashboard, *data-agent-platform*: run rate and status, p95 run duration, LLM cost by team, tool error rate and API p95 latency.
+
+![The provisioned Grafana dashboard after an afternoon of evaluation runs](docs/images/grafana-dashboard.png)
 
 ## Testing and CI
 
